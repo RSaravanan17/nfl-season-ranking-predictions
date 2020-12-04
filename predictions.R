@@ -62,12 +62,16 @@ rankedLast <- data.frame(PtsScoredRank.c = 32 - mean(mydata$PtsScoredRank),
 # calculate the corresponding prediction
 predict(reg, rankedLast, interval = "confidence")
 
-# plot relationship between points scored and yards gained
+# relationship and correlation between points scored and yards gained
 ggplot(mydata, aes(x = PtsScoredRank, y = YdsGainedRank)) +
   geom_point() +
   geom_smooth(method = lm, se = FALSE)
 
-# plot relationship between points allowed and yards allowed
+cor(mydata$PtsScoredRank, mydata$YdsGainedRank)
+
+# relationship and correlation between points allowed and yards allowed
 ggplot(mydata, aes(x = PtsAllowedRank, y = YdsAllowedRank)) +
   geom_point() +
   geom_smooth(method = lm, se = FALSE)
+
+cor(mydata$PtsAllowedRank, mydata$YdsAllowedRank)
