@@ -1,0 +1,312 @@
+---
+title: "Analyzing the Association between Dallas Cowboys Offensive and Defensive Season Rankings and Margin of Victory"
+author: "Rithvik Saravanan"
+date: "November 20, 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(car)
+library(psych)
+library(leaps)
+```
+
+# Data
+
+```{r data}
+# load data
+data <- read.csv('./dallas_cowboys_season_data.csv')
+mydata <- data[c("MoV", "PtsScoredRank", "PtsAllowedRank",
+                 "YdsGainedRank", "YdsAllowedRank")]
+```
+
+# Research Questions
+
+* If the Dallas Cowboys are ranked first in offensive and defensive season rankings in yards and points in a future season, what is a range of their predicted margin of victory?
+
+* What is the range of the mean predicted margin of victory for a future season where the Dallas Cowboys are ranked last in offensive and defensive season rankings in yards and points?
+
+* Is there a relationship between points scored and yards gained for the Dallas Cowboys?
+
+* Is there a relationship between points allowed and yards allowed for the Dallas Cowboys?
+
+To answer these research questions, I plan to fit a multiple linear regression model where the predictors of offensive and defensive season rankings in yards and points will be used to predict the margin of victory. I plan to build this model by comparing the results and fit of both forward and backward stepwise selection as well as best subsets regression. I also plan to investigate whether there are relationships between any of the predictors, and if so, I will consider adding interaction effects to the model.
+
+# Model
+
+To first analyze the relationships between the predictors and between the predictors and response, we can create a base multiple linear regression model with all four first-order predictors (points scored rank, points allowed rank, yards gained rank, yards allowed rank).
+
+```{r mlr1}
+# multiple regression model with all predictors
+reg1 <- lm(MoV ~ PtsScoredRank + PtsAllowedRank + YdsGainedRank + YdsAllowedRank, mydata)
+summary(reg1)
+```
+
+The regression equation of this relationship is modeled by $$y = 12.3865 - 0.4769x_1 - 0.2425x_2 - 0.0049x_3 - 0.1440x_4$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, $x_3$ represents the season rank in yards gained, and $x_4$ represents the season rank in yards allowed..
+
+From this base regression model, we notice that the $R^2$ is 0.6848 and the $R_{adj}^2$ is 0.6619. The adjusted coefficient of determination of 0.6619 indicates that 66.19% of the variation in the response variable of `MoV` is accounted for by the predictor variables. In other words, when these predictor variables are considered, the variation in `MoV` is reduced by 66.19%.
+
+Additionally, we observe that the $p$-values for `YdsGainedRank` and `YdsAllowedRank` are above the 0.05 significance level, while the $p$-values for `PtsScoredRank` and `PtsAllowedRank` are below the 0.05 significance level. This indicates that the slope coefficients for `YdsGainedRank` and `YdsAllowedRank` are not significantly different from zero while the slope coefficients for `PtsScoredRank` and `PtsAllowedRank` are indeed significantly different from zero.
+
+To help build a better model, we can first remove any outliers using Cook's distance.
+
+```{r outliers}
+# identifying outliers with Cook's distance
+plot(reg1, which = 4, cook.levels = cutoff)
+
+mydata <- mydata[-56, -59, -60]
+reg1 <- lm(MoV ~ PtsScoredRank + PtsAllowedRank + YdsGainedRank + YdsAllowedRank, mydata)
+```
+
+After removing outliers, we can verify the VIF values for each predictor to detect multicollinearity.
+
+```{r vif1}
+vif(reg1)
+```
+
+We note that the VIF for `PtsScoredRank` and `YdsGainedRank` is close to 5. This indicates that there may be some multicollinearity and we should proceed cautiously.
+
+Next, we can plot a correlation matrix to observe the pairwise relationships.
+
+```{r correlation}
+# scatter plot matrix
+pairs.panels(mydata,
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB", # color of histogram
+             smooth = FALSE,
+             density = FALSE,
+             ellipses = FALSE)
+```
+
+From this correlation matrix, we notice that all of the predictors show a negative, linear, moderate to strong correlation with the response. We also observe that `PtsScoredRank` and `YdsGainedRank` as well as `PtsAllowedRank` and `YdsAllowedRank` have positive, linear, strong correlations. This indicates that interaction effects between these pairs of predictors will be useful in improving the model. We also understand that logarithmic transformations are not feasible for this model because the response variable `MoV` can be negative.
+
+We can then check the diagnostics of this model to verify the assumptions.
+
+```{r mlr1_diagnostics1, fig.width=3.2, fig.height=3.2, fig.align="center", fig.show="hold"}
+# residuals vs. fitted values
+mydata$resids1 <- residuals(reg1)
+mydata$predicted1 <- predict(reg1)
+ggplot(mydata, aes(x = predicted1, y = resids1)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") +
+  labs(title ="Residuals vs. Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals")
+
+# normal probability plot
+ggplot(mydata, aes(sample = resids1)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Normal Probability Plot",
+       x = "Theoretical Percentiles",
+       y = "Sample Percentiles")
+```
+
+From this residual plot, we observe that there is approximately equal variance because the residuals are approximately equal in average magnitude for the fitted values across the plot. Excluding the few outliers near the bottom of the plot, we note that there is no obvious pattern since the fitted values are scattered mostly randomly across the plot. Therefore, this plot indicates linearity.
+
+From this normal probability plot, we can observe that the data points form an approximately straight line and line up mostly along the line shown in the plot. This indicates that the normal distribution is a good model because the plot shows no significant deviation from a normal distribution of error terms. Since there is deviation from the line around the extremes (specifically at the lower extreme), this plot indicates heavy tails. Otherwise, the assumption that the residuals are normally distributed is approximately met.
+
+We can also look at the residual plots for each predictor to understand whether a non-linear or higher-order model is viable.
+
+```{r mlr1_diagnostics2, fig.width=3.2, fig.height=3.2, fig.align="center", fig.show="hold"}
+# residuals vs. predictors
+ggplot(mydata, aes(x = PtsScoredRank, y = resids1)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") + 
+  labs(title = "Residuals vs. PtsScoredRank",
+  x = "Fitted values",
+  y = "Residuals")
+
+ggplot(mydata, aes(x = PtsAllowedRank, y = resids1)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") + 
+  labs(title = "Residuals vs. PtsAllowedRank",
+  x = "Fitted values",
+  y = "Residuals")
+
+ggplot(mydata, aes(x = YdsGainedRank, y = resids1)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") + 
+  labs(title = "Residuals vs. YdsGainedRank",
+  x = "Fitted values",
+  y = "Residuals")
+
+ggplot(mydata, aes(x = YdsAllowedRank, y = resids1)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") + 
+  labs(title = "Residuals vs. YdsAllowedRank",
+  x = "Fitted values",
+  y = "Residuals")
+```
+
+Looking at these residual plots, we observe that there is approximately equal variance because the residuals are approximately equal in average magnitude for the fitted values across each plot. Excluding the few outliers near the bottom of the plots, we note that there is no obvious pattern since the fitted values are scattered mostly randomly across the plots. Therefore, these plots indicate linearity. From this, we understand that first-order, linear predictors should be used in the model.
+
+To identify the best fitting model, we need to identify which predictors to incorporate. To do so, we can evaluate the results from both forward and backward stepwise selection as well as best subsets regression.
+
+```{r stepwise_models}
+# fit an empty model with only the response
+FitStart <- lm(MoV ~ 1, mydata)
+
+# fit a full model with all predictors
+FitAll <- lm(MoV ~ PtsScoredRank + PtsAllowedRank + YdsGainedRank + YdsAllowedRank, mydata)
+```
+
+```{r stepwise_forward}
+# run the stepwise regression with forward selection based on the AIC criterion
+step(FitStart, direction = "forward", scope = formula(FitAll))
+```
+
+The predictors selected by forward stepwise selection include `PtsScoredRank`, `PtsAllowedRank`, and `YdsAllowedRank`. The regression equation of this relationship is modeled by $$y = 12.7631 - 0.4735x_1 - 0.2508x_2 - 0.1655x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
+```{r stepwise_backward}
+# run the stepwise regression with backward selection based on the AIC criterion
+step(FitAll, direction = "backward", scope = formula(FitStart))
+```
+
+The predictors selected by backward stepwise selection include `PtsScoredRank`, `PtsAllowedRank`, and `YdsAllowedRank`. The regression equation of this relationship is modeled by $$y = 12.7631 - 0.4735x_1 - 0.2508x_2 - 0.1655x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
+```{r best_subsets}
+# find the best model for each number of predictors (with 3 predictors maximum)
+models <- regsubsets(MoV ~ PtsScoredRank + PtsAllowedRank +
+                           YdsGainedRank + YdsAllowedRank, mydata, nvmax = 4)
+models.sum <- summary(models)
+
+# create four plots within a 2x2 frame to compare the different criteria
+par(mfrow = c(2,2))
+
+# SSE
+plot(models.sum$rss, xlab = "Number of predictors", ylab = "SSE", type = "l")
+
+# R2
+plot(models.sum$adjr2, xlab = "Number of predictors", ylab = "Adjusted RSq" , type = "l")
+
+# Mallow's Cp
+plot(models.sum$cp, xlab = "Number of predictors", ylab = "Cp", type = "l")
+
+# BIC
+plot(models.sum$bic, xlab = "Number of predictors", ylab = "BIC", type = "l")
+
+# display the best model for each number of predictors
+models.sum$outmat
+```
+
+From the SSE graph, we notice that using three or more predictors results in the smallest SSE. A smaller SSE is preferrable SSE because it results in a larger $R^2$.
+
+From the Adjusted $R^2$ graph, we notice that using three predictors results in the largest adjusted $R^2$. A larger $R^2$ is preferrable because it conveys that more of the variance is accounted for by the model.
+
+From the Mallow's $C_p$ graph, we notice that using three predictors results in the smallest $C_p$. A smaller $C_p$ is preferrable because it conveys that there is less bias introduced into the predicted responses by having an underspecified model.
+
+From the BIC graph, we notice that using two or three predictors results in the smallest BIC. A smaller BIC is preferrable because it depends on the SSE (which we also want to minimize).
+
+From these graphs, the best subsets regression identifies that three predictors should be incorporated in the model.
+
+The predictors selected by best subsets regression include `PtsScoredRank`, `PtsAllowedRank`, and `YdsAllowedRank`. The regression equation of this relationship is modeled by $$y = 12.7631 - 0.4735x_1 - 0.2508x_2 - 0.1655x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
+From these three methods, we notice that the predictors and the regression equations are the same for all three methods.
+
+We can now check the validity of this model. Since `YdsGainedRank` is no longer used as a predictor, per the Hierarchy Principle, the only interaction effect we can incorporate is between `PtsAllowedRank` and `YdsAllowedRank`.
+
+```{r mlr2}
+# multiple regression model with 3 predictors and 1 interaction effect
+reg2 <- lm(MoV ~ PtsScoredRank + PtsAllowedRank + YdsAllowedRank +
+                 PtsAllowedRank * YdsAllowedRank, mydata)
+
+summary(reg2)
+```
+
+The regression equation of this relationship is modeled by $$y = 13.9475 - 0.4595x_1 - 0.3867x_2 - 0.2882x_3 + 0.0097x_2x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
+From this base regression model, we notice that the $R^2$ is 0.7128 and the $R_{adj}^2$ is 0.6915. The adjusted coefficient of determination of 0.6915 indicates that 69.15% of the variation in the response variable of `MoV` is accounted for by the predictor variables. In other words, when these predictor variables are considered, the variation in `MoV` is reduced by 69.15%.
+
+We notice that this coefficient of determination is an improvement over the previous model. To further explore the viability of this model, we can check the diagnostics to verify the assumptions.
+
+```{r mlr2_diagnostics, fig.width=3.2, fig.height=3.2, fig.align="center", fig.show="hold"}
+# residuals vs. fitted values
+mydata$resids2 <- residuals(reg2)
+mydata$predicted2 <- predict(reg2)
+ggplot(mydata, aes(x = predicted2, y = resids2)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") +
+  labs(title ="Residuals vs. Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals")
+
+# normal probability plot
+ggplot(mydata, aes(sample = resids2)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Normal Probability Plot",
+       x = "Theoretical Percentiles",
+       y = "Sample Percentiles")
+```
+
+From this residual plot, we observe that there is approximately equal variance because the residuals are approximately equal in average magnitude for the fitted values across the plot. Excluding the few outliers near the bottom of the plot, we note that there is no obvious pattern since the fitted values are scattered mostly randomly across the plot. Therefore, this plot indicates linearity.
+
+From this normal probability plot, we can observe that the data points form an approximately straight line and line up mostly along the line shown in the plot. This indicates that the normal distribution is a good model because the plot shows no significant deviation from a normal distribution of error terms. Since there is deviation from the line around the extremes (specifically at the lower extreme), this plot indicates heavy tails. Otherwise, the assumption that the residuals are normally distributed is approximately met.
+
+```{r vif2}
+# calculate the Variance Inflation Factor for each predictor
+vif(reg2)
+```
+
+Looking at the VIF for each of the predictors in this model, we notice that all but one predictor has a high VIF (close to or greater than 5). To account for this, we can center the predictors to reduce multicollinearity.
+
+```{r mlr3}
+# center the predictors
+mydata <- mydata %>%
+          mutate(PtsScoredRank.c = PtsScoredRank - mean(PtsScoredRank),
+                 PtsAllowedRank.c = PtsAllowedRank - mean(PtsAllowedRank),
+                 YdsGainedRank.c = YdsGainedRank - mean(YdsGainedRank),
+                 YdsAllowedRank.c = YdsAllowedRank - mean(YdsAllowedRank))
+
+# fit the regression model with centered predictors
+reg3 <- lm(MoV ~ PtsScoredRank.c + PtsAllowedRank.c + YdsAllowedRank.c +
+                 PtsAllowedRank.c * YdsAllowedRank.c, mydata)
+
+summary(reg3)
+```
+
+The regression equation of this relationship is modeled by $$y = 2.6351 - 0.4595x_1 - 0.2832x_2 - 0.1773x_3 + 0.0097x_2x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
+From this base regression model, we notice that the $R^2$ is 0.7128 and the $R_{adj}^2$ is 0.6915. The adjusted coefficient of determination of 0.6915 indicates that 69.15% of the variation in the response variable of `MoV` is accounted for by the predictor variables. In other words, when these predictor variables are considered, the variation in `MoV` is reduced by 69.15%.
+
+The coefficient of determination is the same as the previous model because centering the predictors is a translation on all of the data points, so every data point is shifted by the same amount and the variance is unaffected.
+
+To verify the assumptions, we can check the diagnostics for this updated model.
+
+```{r mlr3_diagnostics, fig.width=3.2, fig.height=3.2, fig.align="center", fig.show="hold"}
+# residuals vs. fitted values
+mydata$resids3 <- residuals(reg3)
+mydata$predicted3 <- predict(reg3)
+ggplot(mydata, aes(x = predicted3, y = resids3)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "blue") +
+  labs(title ="Residuals vs. Fitted Values",
+       x = "Fitted Values",
+       y = "Residuals")
+
+# normal probability plot
+ggplot(mydata, aes(sample = resids3)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Normal Probability Plot",
+       x = "Theoretical Percentiles",
+       y = "Sample Percentiles")
+```
+
+From this residual plot, we observe that there is approximately equal variance because the residuals are approximately equal in average magnitude for the fitted values across the plot. Excluding the few outliers near the bottom of the plot, we note that there is no obvious pattern since the fitted values are scattered mostly randomly across the plot. Therefore, this plot indicates linearity.
+
+From this normal probability plot, we can observe that the data points form an approximately straight line and line up mostly along the line shown in the plot. This indicates that the normal distribution is a good model because the plot shows no significant deviation from a normal distribution of error terms. Since there is deviation from the line around the extremes (specifically at the lower extreme), this plot indicates heavy tails. Otherwise, the assumption that the residuals are normally distributed is approximately met.
+
+```{r vif3}
+# updated VIF
+vif(reg3)
+```
+
+After centering the predictors, we notice that the VIF for each of the predictors has decreased significantly and are all between 1 and 2. From this, we understand that centering the predictors helped resolve the issue of multicollinearity.
+
+Therefore, by removing outliers, analyzing relationships between predictors, using forward and backward stepwise selection and best subsets regression, and centering predictors to reduce multicollinearity, the best fit model is represented by the equation $$y = 2.6351 - 0.4595x_1 - 0.2832x_2 - 0.1773x_3 + 0.0097x_2x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
+
