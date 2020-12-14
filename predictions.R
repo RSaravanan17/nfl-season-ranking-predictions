@@ -8,6 +8,14 @@ library(leaps)
 data <- read.csv('./dallas_cowboys_season_data.csv')
 mydata <- data[c("MoV", "PtsScoredRank", "PtsAllowedRank", "YdsGainedRank", "YdsAllowedRank")]
 
+# scatter plot matrix
+pairs.panels(mydata,
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB", # color of histogram
+             smooth = FALSE,
+             density = FALSE,
+             ellipses = FALSE)
+
 # center the predictors
 mydata <- mydata %>%
           mutate(PtsScoredRank.c = PtsScoredRank - mean(PtsScoredRank),

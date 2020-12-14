@@ -271,7 +271,7 @@ summary(reg3)
 
 The regression equation of this relationship is modeled by $$y = 2.6351 - 0.4595x_1 - 0.2832x_2 - 0.1773x_3 + 0.0097x_2x_3$$ where $y$ represents the margin of victory, $x_1$ represents the season rank in points scored, $x_2$ represents the season rank in points allowed, and $x_3$ represents the season rank in yards allowed.
 
-From this base regression model, we notice that the $R^2$ is 0.7128 and the $R_{adj}^2$ is 0.6915. The adjusted coefficient of determination of 0.6915 indicates that 69.15% of the variation in the response variable of `MoV` is accounted for by the predictor variables. In other words, when these predictor variables are considered, the variation in `MoV` is reduced by 69.15%.
+From this regression model, we notice that the $R^2$ is 0.7128 and the $R_{adj}^2$ is 0.6915. The adjusted coefficient of determination of 0.6915 indicates that 69.15% of the variation in the response variable of `MoV` is accounted for by the predictor variables. In other words, when these predictor variables are considered, the variation in `MoV` is reduced by 69.15%.
 
 The coefficient of determination is the same as the previous model because centering the predictors is a translation on all of the data points, so every data point is shifted by the same amount and the variance is unaffected.
 
